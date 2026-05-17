@@ -21,13 +21,23 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Stop service before replacing binary (avoid "Text file busy" error)
+if systemctl is-active --quiet v2panel-agent 2>/dev/null; then
+  echo -e "${CYAN}==> Stopping existing agent...${NC}"
+  systemctl stop v2panel-agent
+fi
+
 # Use GitHub's /latest/download/ redirect (stable, no API parsing needed)
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BIN_NAME}"
 echo -e "${CYAN}==> Downloading agent...${NC}"
-curl -fL "$DOWNLOAD_URL" -o "${INSTALL_DIR}/v2panel-agent" || {
+# Download to temp file first, then move (atomic replace)
+TMP_BIN=$(mktemp)
+curl -fL "$DOWNLOAD_URL" -o "$TMP_BIN" || {
   echo "ERROR: Download failed from ${DOWNLOAD_URL}"
+  rm -f "$TMP_BIN"
   exit 1
 }
+mv "$TMP_BIN" "${INSTALL_DIR}/v2panel-agent"
 chmod +x "${INSTALL_DIR}/v2panel-agent"
 echo -e "${GREEN}✓ Binary installed to ${INSTALL_DIR}/v2panel-agent${NC}"
 
