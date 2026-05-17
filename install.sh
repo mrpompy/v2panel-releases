@@ -104,8 +104,34 @@ case "$1" in
     curl -s ifconfig.me
     echo
     ;;
+  port)
+    if [ -z "$2" ]; then
+      grep -oP '(?<=AGENT_PORT=)\d+' "$SERVICE_FILE"
+    else
+      sed -i "s/AGENT_PORT=[0-9]*/AGENT_PORT=$2/" "$SERVICE_FILE"
+      systemctl daemon-reload
+      systemctl restart v2panel-agent
+      echo "Port changed to $2, agent restarted"
+      echo "Agent URL: http://$(curl -s ifconfig.me 2>/dev/null):$2"
+    fi
+    ;;
+  token-reset)
+    NEW_TOKEN=$(openssl rand -hex 32)
+    sed -i "s/AGENT_TOKEN=.*/AGENT_TOKEN=${NEW_TOKEN}/" "$SERVICE_FILE"
+    systemctl daemon-reload
+    systemctl restart v2panel-agent
+    echo "New token: ${NEW_TOKEN}"
+    ;;
+  info)
+    TOKEN=$(grep -oP '(?<=AGENT_TOKEN=)[^\s]+' "$SERVICE_FILE")
+    PORT=$(grep -oP '(?<=AGENT_PORT=)\d+' "$SERVICE_FILE")
+    IP=$(curl -s ifconfig.me 2>/dev/null)
+    echo "Agent URL:  http://${IP}:${PORT}"
+    echo "Token:      ${TOKEN}"
+    echo "Status:     $(systemctl is-active v2panel-agent)"
+    ;;
   *)
-    echo "Usage: v2panel {token|status|start|stop|restart|log|ip}"
+    echo "Usage: v2panel {info|token|token-reset|port [N]|status|start|stop|restart|log|ip}"
     ;;
 esac
 CLIPEOF
