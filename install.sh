@@ -60,7 +60,7 @@ After=network.target
 
 [Service]
 Environment=AGENT_TOKEN=${AGENT_TOKEN}
-Environment=AGENT_PORT=9090
+Environment=AGENT_PORT=9191
 Environment=V2RAY_CONFIG=${V2RAY_CONFIG}
 ExecStart=/usr/local/bin/v2panel-agent
 Restart=always
@@ -118,7 +118,7 @@ echo -e "${CYAN}========================================${NC}"
 echo -e "${GREEN}  V2Panel Agent installed successfully!${NC}"
 echo -e "${CYAN}========================================${NC}"
 echo ""
-echo -e "  Agent URL:  ${YELLOW}http://$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}'):9090${NC}"
+echo -e "  Agent URL:  ${YELLOW}http://$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}'):9191${NC}"
 echo -e "  Token:      ${YELLOW}${AGENT_TOKEN}${NC}"
 echo ""
 echo -e "  Commands:"
