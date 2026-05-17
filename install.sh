@@ -21,19 +21,13 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Get latest release URL
-echo -e "${CYAN}==> Fetching latest release...${NC}"
-DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" \
-  | grep "browser_download_url.*${BIN_NAME}" \
-  | cut -d '"' -f 4)
-
-if [ -z "$DOWNLOAD_URL" ]; then
-  echo "ERROR: Could not find release binary. Check https://github.com/${REPO}/releases"
+# Use GitHub's /latest/download/ redirect (stable, no API parsing needed)
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BIN_NAME}"
+echo -e "${CYAN}==> Downloading agent...${NC}"
+curl -fL "$DOWNLOAD_URL" -o "${INSTALL_DIR}/v2panel-agent" || {
+  echo "ERROR: Download failed from ${DOWNLOAD_URL}"
   exit 1
-fi
-
-echo -e "${CYAN}==> Downloading from: ${DOWNLOAD_URL}${NC}"
-curl -L "$DOWNLOAD_URL" -o "${INSTALL_DIR}/v2panel-agent"
+}
 chmod +x "${INSTALL_DIR}/v2panel-agent"
 echo -e "${GREEN}✓ Binary installed to ${INSTALL_DIR}/v2panel-agent${NC}"
 
