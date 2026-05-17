@@ -135,13 +135,53 @@ case "$1" in
   info)
     TOKEN=$(grep -oP '(?<=AGENT_TOKEN=)[^\s]+' "$SERVICE_FILE")
     PORT=$(grep -oP '(?<=AGENT_PORT=)\d+' "$SERVICE_FILE")
+    BACKEND=$(grep -oP '(?<=BACKEND_URL=)[^\s]+' "$SERVICE_FILE" 2>/dev/null || echo "未设置")
+    NODE_ID=$(grep -oP '(?<=NODE_ID=)[^\s]+' "$SERVICE_FILE" 2>/dev/null || echo "未设置")
     IP=$(curl -s ifconfig.me 2>/dev/null)
     echo "Agent URL:  http://${IP}:${PORT}"
     echo "Token:      ${TOKEN}"
+    echo "Backend:    ${BACKEND}"
+    echo "Node ID:    ${NODE_ID}"
     echo "Status:     $(systemctl is-active v2panel-agent)"
     ;;
+  backend)
+    if [ -z "$2" ]; then
+      grep -oP '(?<=BACKEND_URL=)[^\s]+' "$SERVICE_FILE" 2>/dev/null || echo "未设置"
+    else
+      # Remove existing BACKEND_URL line if present, then add new one
+      sed -i '/^Environment=BACKEND_URL=/d' "$SERVICE_FILE"
+      sed -i "/^\[Service\]/a Environment=BACKEND_URL=$2" "$SERVICE_FILE"
+      systemctl daemon-reload && systemctl restart v2panel-agent
+      echo "Backend set to: $2"
+    fi
+    ;;
+  node-id)
+    if [ -z "$2" ]; then
+      grep -oP '(?<=NODE_ID=)[^\s]+' "$SERVICE_FILE" 2>/dev/null || echo "未设置"
+    else
+      sed -i '/^Environment=NODE_ID=/d' "$SERVICE_FILE"
+      sed -i "/^\[Service\]/a Environment=NODE_ID=$2" "$SERVICE_FILE"
+      systemctl daemon-reload && systemctl restart v2panel-agent
+      echo "Node ID set to: $2"
+    fi
+    ;;
   *)
-    echo "Usage: v2panel {info|token|token-reset|port [N]|status|start|stop|restart|log|ip}"
+    echo "v2panel commands:"
+    echo "  info              — Agent URL + Token + Backend + 状态"
+    echo "  token             — 显示 Token"
+    echo "  token-reset       — 重置 Token"
+    echo "  port              — 查看当前端口"
+    echo "  port N            — 修改端口为 N"
+    echo "  backend           — 查看管理后台地址"
+    echo "  backend <URL>     — 设置管理后台地址"
+    echo "  node-id           — 查看节点 ID"
+    echo "  node-id <N>       — 设置节点 ID"
+    echo "  status            — systemd 服务状态"
+    echo "  start             — 启动"
+    echo "  stop              — 停止"
+    echo "  restart           — 重启"
+    echo "  log               — 实时日志 (Ctrl+C 退出)"
+    echo "  ip                — 显示公网 IP"
     ;;
 esac
 CLIPEOF
@@ -158,15 +198,11 @@ echo -e "  Agent URL:  ${YELLOW}http://$(curl -s ifconfig.me 2>/dev/null || host
 echo -e "  Token:      ${YELLOW}${AGENT_TOKEN}${NC}"
 echo ""
 echo -e "  Commands:"
-echo -e "    ${CYAN}v2panel info${NC}         — Agent URL + Token + 状态"
-echo -e "    ${CYAN}v2panel token${NC}        — 显示 Token"
-echo -e "    ${CYAN}v2panel token-reset${NC}  — 重置 Token"
-echo -e "    ${CYAN}v2panel port${NC}         — 查看当前端口"
-echo -e "    ${CYAN}v2panel port 9292${NC}    — 修改端口"
-echo -e "    ${CYAN}v2panel status${NC}       — 服务状态"
-echo -e "    ${CYAN}v2panel start${NC}        — 启动"
-echo -e "    ${CYAN}v2panel stop${NC}         — 停止"
-echo -e "    ${CYAN}v2panel restart${NC}      — 重启"
-echo -e "    ${CYAN}v2panel log${NC}          — 实时日志"
-echo -e "    ${CYAN}v2panel ip${NC}           — 公网 IP"
+echo -e "    ${CYAN}v2panel info${NC}                   — 查看全部配置"
+echo -e "    ${CYAN}v2panel backend <URL>${NC}           — 设置管理后台地址"
+echo -e "    ${CYAN}v2panel node-id <N>${NC}             — 设置节点 ID"
+echo -e "    ${CYAN}v2panel port [N]${NC}                — 查看/修改端口"
+echo -e "    ${CYAN}v2panel token${NC}  ${CYAN}token-reset${NC}    — 查看/重置 Token"
+echo -e "    ${CYAN}v2panel start${NC}  ${CYAN}stop${NC}  ${CYAN}restart${NC}   — 服务控制"
+echo -e "    ${CYAN}v2panel log${NC}                     — 实时日志"
 echo -e "${CYAN}========================================${NC}"
