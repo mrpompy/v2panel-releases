@@ -2,7 +2,7 @@
 set -e
 
 REPO="mrpompy/v2panel-releases"
-BIN_NAME="v2panel-agent-linux-amd64"
+BIN_NAME="v2panel-agent"
 INSTALL_DIR="/usr/local/bin"
 SERVICE_FILE="/etc/systemd/system/v2panel-agent.service"
 CLI_FILE="/usr/local/bin/v2panel"
