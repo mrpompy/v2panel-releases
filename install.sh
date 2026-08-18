@@ -46,12 +46,19 @@ echo -e "${GREEN}✓ Binary installed to ${INSTALL_DIR}/v2panel-agent${NC}"
 if [ -f "$SERVICE_FILE" ]; then
   # Keep existing token
   AGENT_TOKEN=$(grep -oP '(?<=AGENT_TOKEN=)[^\s]+' "$SERVICE_FILE" || true)
+  AGENT_PORT=$(grep -oP '(?<=AGENT_PORT=)\d+' "$SERVICE_FILE" || true)
+  BACKEND_URL=$(grep -oP '(?<=BACKEND_URL=)[^\s]+' "$SERVICE_FILE" || true)
+  NODE_ID=$(grep -oP '(?<=NODE_ID=)\d+' "$SERVICE_FILE" || true)
+  VMESS_NODE_ID=$(grep -oP '(?<=VMESS_NODE_ID=)\d+' "$SERVICE_FILE" || true)
+  HY2_NODE_ID=$(grep -oP '(?<=HY2_NODE_ID=)\d+' "$SERVICE_FILE" || true)
+  REALITY_NODE_ID=$(grep -oP '(?<=REALITY_NODE_ID=)\d+' "$SERVICE_FILE" || true)
 fi
 
 if [ -z "$AGENT_TOKEN" ]; then
   AGENT_TOKEN=$(openssl rand -hex 32)
   echo -e "${GREEN}✓ Generated new token${NC}"
 fi
+AGENT_PORT=${AGENT_PORT:-9191}
 
 # Preserve the Hysteria2 traffic API secret across upgrades.
 if [ -f "$SERVICE_FILE" ]; then
@@ -82,7 +89,12 @@ After=network.target
 
 [Service]
 Environment=AGENT_TOKEN=${AGENT_TOKEN}
-Environment=AGENT_PORT=9191
+Environment=AGENT_PORT=${AGENT_PORT}
+Environment=BACKEND_URL=${BACKEND_URL}
+Environment=NODE_ID=${NODE_ID}
+Environment=VMESS_NODE_ID=${VMESS_NODE_ID}
+Environment=HY2_NODE_ID=${HY2_NODE_ID}
+Environment=REALITY_NODE_ID=${REALITY_NODE_ID}
 Environment=V2RAY_CONFIG=${V2RAY_CONFIG}
 Environment=HY2_AUTH_ADDR=127.0.0.1:9192
 Environment=HY2_USER_STORE=${STATE_DIR}/hysteria2-users.json
@@ -91,6 +103,7 @@ Environment=HY2_STATS_SECRET=${HY2_STATS_SECRET}
 Environment=XRAY_CONFIG=/usr/local/etc/xray/config.json
 Environment=XRAY_SERVICE=xray
 Environment=XRAY_BINARY=/usr/local/bin/xray
+Environment=XRAY_API_ADDR=127.0.0.1:10085
 ExecStart=/usr/local/bin/v2panel-agent
 Restart=always
 RestartSec=5
@@ -110,6 +123,21 @@ echo -e "${GREEN}✓ Service started${NC}"
 cat > "$CLI_FILE" << 'CLIPEOF'
 #!/bin/bash
 SERVICE_FILE="/etc/systemd/system/v2panel-agent.service"
+get_env() {
+  grep -oP "(?<=Environment=$1=)[^\\s]+" "$SERVICE_FILE" 2>/dev/null || true
+}
+set_env() {
+  sed -i "/^Environment=$1=/d" "$SERVICE_FILE"
+  sed -i "/^\[Service\]/a Environment=$1=$2" "$SERVICE_FILE"
+}
+show_node_ids() {
+  VMESS=$(get_env VMESS_NODE_ID); [ -n "$VMESS" ] || VMESS=$(get_env NODE_ID)
+  HY2=$(get_env HY2_NODE_ID)
+  REALITY=$(get_env REALITY_NODE_ID)
+  echo "vmess:         ${VMESS:-未设置}"
+  echo "hysteria2:     ${HY2:-未设置}"
+  echo "vless-reality: ${REALITY:-未设置}"
+}
 case "$1" in
   token)
     grep -oP '(?<=AGENT_TOKEN=)[^\s]+' "$SERVICE_FILE"
@@ -154,13 +182,13 @@ case "$1" in
   info)
     TOKEN=$(grep -oP '(?<=AGENT_TOKEN=)[^\s]+' "$SERVICE_FILE")
     PORT=$(grep -oP '(?<=AGENT_PORT=)\d+' "$SERVICE_FILE")
-    BACKEND=$(grep -oP '(?<=BACKEND_URL=)[^\s]+' "$SERVICE_FILE" 2>/dev/null || echo "未设置")
-    NODE_ID=$(grep -oP '(?<=NODE_ID=)[^\s]+' "$SERVICE_FILE" 2>/dev/null || echo "未设置")
+    BACKEND=$(get_env BACKEND_URL); BACKEND=${BACKEND:-未设置}
     IP=$(curl -s ifconfig.me 2>/dev/null)
     echo "Agent URL:  http://${IP}:${PORT}"
     echo "Token:      ${TOKEN}"
     echo "Backend:    ${BACKEND}"
-    echo "Node ID:    ${NODE_ID}"
+    echo "Node IDs:"
+    show_node_ids | sed 's/^/  /'
     echo "Status:     $(systemctl is-active v2panel-agent)"
     echo "Protocols:  vmess, hysteria2, vless-reality"
     ;;
@@ -169,23 +197,34 @@ case "$1" in
     ;;
   backend)
     if [ -z "$2" ]; then
-      grep -oP '(?<=BACKEND_URL=)[^\s]+' "$SERVICE_FILE" 2>/dev/null || echo "未设置"
+      VALUE=$(get_env BACKEND_URL); echo "${VALUE:-未设置}"
     else
-      # Remove existing BACKEND_URL line if present, then add new one
-      sed -i '/^Environment=BACKEND_URL=/d' "$SERVICE_FILE"
-      sed -i "/^\[Service\]/a Environment=BACKEND_URL=$2" "$SERVICE_FILE"
+      set_env BACKEND_URL "$2"
       systemctl daemon-reload && systemctl restart v2panel-agent
       echo "Backend set to: $2"
     fi
     ;;
   node-id)
     if [ -z "$2" ]; then
-      grep -oP '(?<=NODE_ID=)[^\s]+' "$SERVICE_FILE" 2>/dev/null || echo "未设置"
-    else
-      sed -i '/^Environment=NODE_ID=/d' "$SERVICE_FILE"
-      sed -i "/^\[Service\]/a Environment=NODE_ID=$2" "$SERVICE_FILE"
+      show_node_ids
+    elif [ -z "$3" ] && [[ "$2" =~ ^[0-9]+$ ]]; then
+      set_env VMESS_NODE_ID "$2"
       systemctl daemon-reload && systemctl restart v2panel-agent
-      echo "Node ID set to: $2"
+      echo "vmess Node ID set to: $2"
+    else
+      if ! [[ "$3" =~ ^[0-9]+$ ]]; then
+        echo "Node ID must be a non-negative integer"
+        exit 1
+      fi
+      case "$2" in
+        vmess) ENV_KEY=VMESS_NODE_ID ;;
+        hysteria2|hy2) ENV_KEY=HY2_NODE_ID ;;
+        vless-reality|reality) ENV_KEY=REALITY_NODE_ID ;;
+        *) echo "Protocol must be vmess, hysteria2, or vless-reality"; exit 1 ;;
+      esac
+      set_env "$ENV_KEY" "$3"
+      systemctl daemon-reload && systemctl restart v2panel-agent
+      echo "$2 Node ID set to: $3"
     fi
     ;;
   *)
@@ -197,8 +236,9 @@ case "$1" in
     echo "  port N            — 修改端口为 N"
     echo "  backend           — 查看管理后台地址"
     echo "  backend <URL>     — 设置管理后台地址"
-    echo "  node-id           — 查看节点 ID"
-    echo "  node-id <N>       — 设置节点 ID"
+    echo "  node-id                         — 查看各协议节点 ID"
+    echo "  node-id <protocol> <N>          — 设置协议节点 ID"
+    echo "  node-id <N>                     — 设置 VMess 节点 ID（兼容）"
     echo "  hy2-stats-secret  — 显示 HY2 流量 API Secret"
     echo "  status            — systemd 服务状态"
     echo "  start             — 启动"
@@ -224,7 +264,7 @@ echo ""
 echo -e "  Commands:"
 echo -e "    ${CYAN}v2panel info${NC}                   — 查看全部配置"
 echo -e "    ${CYAN}v2panel backend <URL>${NC}           — 设置管理后台地址"
-echo -e "    ${CYAN}v2panel node-id <N>${NC}             — 设置节点 ID"
+echo -e "    ${CYAN}v2panel node-id <protocol> <N>${NC}  — 设置协议节点 ID"
 echo -e "    ${CYAN}v2panel hy2-stats-secret${NC}         — 显示 HY2 流量 API Secret"
 echo -e "    ${CYAN}v2panel port [N]${NC}                — 查看/修改端口"
 echo -e "    ${CYAN}v2panel token${NC}  ${CYAN}token-reset${NC}    — 查看/重置 Token"

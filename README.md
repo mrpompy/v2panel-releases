@@ -16,6 +16,10 @@ bash <(curl -sL https://raw.githubusercontent.com/mrpompy/v2panel-releases/main/
 v2panel info              # URL, token, status, and protocols
 v2panel token             # show agent token
 v2panel hy2-stats-secret  # show Hysteria2 traffic API secret
+v2panel backend <URL>     # set panel URL for traffic reports
+v2panel node-id           # show all protocol node IDs
+v2panel node-id hysteria2 <N>
+v2panel node-id vless-reality <N>
 v2panel status            # service status
 v2panel log               # live logs
 v2panel restart           # restart agent
