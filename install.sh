@@ -6,6 +6,7 @@ BIN_NAME="v2panel-agent"
 INSTALL_DIR="/usr/local/bin"
 SERVICE_FILE="/etc/systemd/system/v2panel-agent.service"
 CLI_FILE="/usr/local/bin/v2panel"
+STATE_DIR="/var/lib/v2panel-agent"
 
 # Colors
 GREEN='\033[0;32m'
@@ -52,6 +53,17 @@ if [ -z "$AGENT_TOKEN" ]; then
   echo -e "${GREEN}✓ Generated new token${NC}"
 fi
 
+# Preserve the Hysteria2 traffic API secret across upgrades.
+if [ -f "$SERVICE_FILE" ]; then
+  HY2_STATS_SECRET=$(grep -oP '(?<=HY2_STATS_SECRET=)[^\s]+' "$SERVICE_FILE" || true)
+fi
+if [ -z "$HY2_STATS_SECRET" ]; then
+  HY2_STATS_SECRET=$(openssl rand -hex 32)
+  echo -e "${GREEN}✓ Generated Hysteria2 stats secret${NC}"
+fi
+
+install -d -m 700 "$STATE_DIR"
+
 # Detect V2Ray config path
 V2RAY_CONFIG="/etc/v2ray/config.json"
 if [ ! -f "$V2RAY_CONFIG" ]; then
@@ -72,6 +84,13 @@ After=network.target
 Environment=AGENT_TOKEN=${AGENT_TOKEN}
 Environment=AGENT_PORT=9191
 Environment=V2RAY_CONFIG=${V2RAY_CONFIG}
+Environment=HY2_AUTH_ADDR=127.0.0.1:9192
+Environment=HY2_USER_STORE=${STATE_DIR}/hysteria2-users.json
+Environment=HY2_STATS_URL=http://127.0.0.1:9999
+Environment=HY2_STATS_SECRET=${HY2_STATS_SECRET}
+Environment=XRAY_CONFIG=/usr/local/etc/xray/config.json
+Environment=XRAY_SERVICE=xray
+Environment=XRAY_BINARY=/usr/local/bin/xray
 ExecStart=/usr/local/bin/v2panel-agent
 Restart=always
 RestartSec=5
@@ -143,6 +162,10 @@ case "$1" in
     echo "Backend:    ${BACKEND}"
     echo "Node ID:    ${NODE_ID}"
     echo "Status:     $(systemctl is-active v2panel-agent)"
+    echo "Protocols:  vmess, hysteria2, vless-reality"
+    ;;
+  hy2-stats-secret)
+    grep -oP '(?<=HY2_STATS_SECRET=)[^\s]+' "$SERVICE_FILE"
     ;;
   backend)
     if [ -z "$2" ]; then
@@ -176,6 +199,7 @@ case "$1" in
     echo "  backend <URL>     — 设置管理后台地址"
     echo "  node-id           — 查看节点 ID"
     echo "  node-id <N>       — 设置节点 ID"
+    echo "  hy2-stats-secret  — 显示 HY2 流量 API Secret"
     echo "  status            — systemd 服务状态"
     echo "  start             — 启动"
     echo "  stop              — 停止"
@@ -201,6 +225,7 @@ echo -e "  Commands:"
 echo -e "    ${CYAN}v2panel info${NC}                   — 查看全部配置"
 echo -e "    ${CYAN}v2panel backend <URL>${NC}           — 设置管理后台地址"
 echo -e "    ${CYAN}v2panel node-id <N>${NC}             — 设置节点 ID"
+echo -e "    ${CYAN}v2panel hy2-stats-secret${NC}         — 显示 HY2 流量 API Secret"
 echo -e "    ${CYAN}v2panel port [N]${NC}                — 查看/修改端口"
 echo -e "    ${CYAN}v2panel token${NC}  ${CYAN}token-reset${NC}    — 查看/重置 Token"
 echo -e "    ${CYAN}v2panel start${NC}  ${CYAN}stop${NC}  ${CYAN}restart${NC}   — 服务控制"
